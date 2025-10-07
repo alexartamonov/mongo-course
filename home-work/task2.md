@@ -263,7 +263,7 @@ db.inventory.insertMany([
 }
 ```
 
-Получение данных через аггрегацию - 
+Получение данных через агрегацию - 
 
 ```JS
 db.inventory.aggregate([  
