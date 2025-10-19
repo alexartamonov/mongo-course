@@ -326,3 +326,266 @@ store> db.products.find({ $text: { $search: "игровой" } }).explain("execu
 }
 
 ```
+
+Смотрим план запроса - видим, что наш index попал в wining plan:
+
+```
+ winningPlan: {
+      stage: 'TEXT_MATCH',
+      indexPrefix: {},
+      indexName: '$**_text',
+```
+
+и 
+
+```
+    totalKeysExamined: 1,
+    totalDocsExamined: 1,
+```
+
+Это означает, что был использован индекс и всего было пройдено по 1 документу, остальные не затронуты - значит наш индекс работает и ускоряет поиск.
+
+Но в нашей коллекции есть не только "Игровой ноутбук", но и ещё какие то игровые устройства:
+
+```JS
+store> db.products.find({
+...   $or: [
+...     { name: { $regex: "Игро", $options: "i" } },
+...     { description: { $regex: "Игро", $options: "i" } }
+...   ]
+... })
+... 
+[
+  {
+    _id: 1,
+    name: 'Игровой ноутбук',
+    price: 20000,
+    description: 'Игровой ноутбук - последняя новинка от известного бренда'
+  },
+  {
+    _id: 8,
+    name: 'Игровое кресло',
+    price: 15000,
+    description: 'Эргономичное кресло для геймеров'
+  },
+  {
+    _id: 19,
+    name: 'Видеокарта',
+    price: 45000,
+    description: 'Игровая видеокарта последнего поколения'
+  }
+]
+```
+
+Попробуем разобраться почему так произошло?
+
+Видно что язык индекса указан как `english`, попробуем поменять его на русский
+```
+parsedQuery: {
+      '$text': {
+        '$search': 'игровой',
+        '$language': 'english',
+        '$caseSensitive': false,
+        '$diacriticSensitive': false
+      }
+    },
+```
+
+
+Пересоздадим индекс:
+
+```JS
+store> db.products.createIndex(
+...   { "$**": "text" },
+...   { default_language: "russian" }
+... )
+... 
+MongoServerError[IndexOptionsConflict]: An equivalent index already exists with the same name but different options. Requested index: { v: 2, key: { _fts: "text", _ftsx: 1 }, name: "$**_text", default_language: "russian", weights: { $**: 1 }, language_override: "language", textIndexVersion: 3 }, existing index: { v: 2, key: { _fts: "text", _ftsx: 1 }, name: "$**_text", weights: { $**: 1 }, default_language: "english", language_override: "language", textIndexVersion: 3 }
+store> db.products.dropIndex("$**_text")
+... 
+{ nIndexesWas: 2, ok: 1 }
+store> db.products.createIndex(
+store> db.products.createIndex(
+...   { "$**": "text" },
+...   { default_language: "russian" }
+... )
+... 
+$**_text
+
+```
+
+и теперь повторяем заново всё:
+
+```JS
+store> db.products.find({ $text: { $search: "игровой" } })
+[
+  {
+    _id: 1,
+    name: 'Игровой ноутбук',
+    price: 20000,
+    description: 'Игровой ноутбук - последняя новинка от известного бренда'
+  },
+  {
+    _id: 8,
+    name: 'Игровое кресло',
+    price: 15000,
+    description: 'Эргономичное кресло для геймеров'
+  },
+  {
+    _id: 19,
+    name: 'Видеокарта',
+    price: 45000,
+    description: 'Игровая видеокарта последнего поколения'
+  }
+]
+
+```
+
+Ура! Теперь выводим три товара из нашего списка, посмотрим изменилось ли что то в плане запроса - 
+
+```
+store> db.products.find({ $text: { $search: "игровой" } }).explain("executionStats")
+{
+  explainVersion: '1',
+  queryPlanner: {
+    namespace: 'store.products',
+    indexFilterSet: false,
+    parsedQuery: {
+      '$text': {
+        '$search': 'игровой',
+        '$language': 'russian',
+        '$caseSensitive': false,
+        '$diacriticSensitive': false
+      }
+    },
+    queryHash: '07C96184',
+    planCacheKey: '7E54BFDF',
+    maxIndexedOrSolutionsReached: false,
+    maxIndexedAndSolutionsReached: false,
+    maxScansToExplodeReached: false,
+    winningPlan: {
+      stage: 'TEXT_MATCH',
+      indexPrefix: {},
+      indexName: '$**_text',
+      parsedTextQuery: {
+        terms: [ 'игров' ],
+        negatedTerms: [],
+        phrases: [],
+        negatedPhrases: []
+      },
+      textIndexVersion: 3,
+      inputStage: {
+        stage: 'FETCH',
+        inputStage: {
+          stage: 'IXSCAN',
+          keyPattern: { _fts: 'text', _ftsx: 1 },
+          indexName: '$**_text',
+          isMultiKey: true,
+          isUnique: false,
+          isSparse: false,
+          isPartial: false,
+          indexVersion: 2,
+          direction: 'backward',
+          indexBounds: {}
+        }
+      }
+    },
+    rejectedPlans: []
+  },
+  executionStats: {
+    executionSuccess: true,
+    nReturned: 3,
+    executionTimeMillis: 0,
+    totalKeysExamined: 3,
+    totalDocsExamined: 3,
+    executionStages: {
+      stage: 'TEXT_MATCH',
+      nReturned: 3,
+      executionTimeMillisEstimate: 0,
+      works: 4,
+      advanced: 3,
+      needTime: 0,
+      needYield: 0,
+      saveState: 0,
+      restoreState: 0,
+      isEOF: 1,
+      indexPrefix: {},
+      indexName: '$**_text',
+      parsedTextQuery: {
+        terms: [ 'игров' ],
+        negatedTerms: [],
+        phrases: [],
+        negatedPhrases: []
+      },
+      textIndexVersion: 3,
+      docsRejected: 0,
+      inputStage: {
+        stage: 'FETCH',
+        nReturned: 3,
+        executionTimeMillisEstimate: 0,
+        works: 4,
+        advanced: 3,
+        needTime: 0,
+        needYield: 0,
+        saveState: 0,
+        restoreState: 0,
+        isEOF: 1,
+        docsExamined: 3,
+        alreadyHasObj: 0,
+        inputStage: {
+          stage: 'IXSCAN',
+          nReturned: 3,
+          executionTimeMillisEstimate: 0,
+          works: 4,
+          advanced: 3,
+          needTime: 0,
+          needYield: 0,
+          saveState: 0,
+          restoreState: 0,
+          isEOF: 1,
+          keyPattern: { _fts: 'text', _ftsx: 1 },
+          indexName: '$**_text',
+          isMultiKey: true,
+          isUnique: false,
+          isSparse: false,
+          isPartial: false,
+          indexVersion: 2,
+          direction: 'backward',
+          indexBounds: {},
+          keysExamined: 3,
+          seeks: 1,
+          dupsTested: 3,
+          dupsDropped: 0
+        }
+      }
+    }
+  },
+  command: {
+    find: 'products',
+    filter: { '$text': { '$search': 'игровой' } },
+    '$db': 'store'
+  },
+  serverInfo: {
+    host: '7dc500973071',
+    port: 27017,
+    version: '6.0.26',
+    gitVersion: '0c4ec4b6005f75582ce208fc800f09f561b6c2e8'
+  },
+  serverParameters: {
+    internalQueryFacetBufferSizeBytes: 104857600,
+    internalQueryFacetMaxOutputDocSizeBytes: 104857600,
+    internalLookupStageIntermediateDocumentMaxSizeBytes: 104857600,
+    internalDocumentSourceGroupMaxMemoryBytes: 104857600,
+    internalQueryMaxBlockingSortMemoryUsageBytes: 104857600,
+    internalQueryProhibitBlockingMergeOnMongoS: 0,
+    internalQueryMaxAddToSetBytes: 104857600,
+    internalDocumentSourceSetWindowFieldsMaxMemoryBytes: 104857600
+  },
+  ok: 1
+}
+
+```
+
+
+
+
