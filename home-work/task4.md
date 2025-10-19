@@ -1,3 +1,5 @@
+# Настройка кластера
+
 Запускаем docker-compose вместе с шардированным кластером
 
 ```bash
@@ -211,7 +213,7 @@ test> rs.initiate({
 shard2 [direct: other] test> exit
 
 ```
-Подключаемся к роутеру mongos — он объединяет все шарды в единую точку входа.
+Подключаемся к роутеру mongos - он объединяет все шарды в единую точку входа.
 ```JS
 
 user@fedora:~/WorkNew/mongodb$ docker exec -it mongodb-mongos-1 mongosh --port 27017
@@ -282,6 +284,8 @@ databases
 
 ```
 
+# Заполнение базы данных товаров
+
 Теперь создаём базу stocks и включаем для неё шардирование:
 
 ```JS
@@ -305,3 +309,547 @@ databases
 [direct: mongos] test> 
 
 ```
+
+sh.status() показал что всё хорошо и наш кластер настроен
+
+
+Вставляем данные в нашу коллекцию 
+
+```JS
+
+db.products.insertMany([  
+   { _id: 1,  name: "Игровой ноутбук",       price: 20000, description: "Игровой ноутбук - последняя новинка от известного бренда" },  
+   { _id: 2,  name: "Компьютерная мышка",    price: 500,   description: "Надежное устройство для повседневной работы" },  
+   { _id: 3,  name: "Механическая клавиатура", price: 3500, description: "Клавиатура с подсветкой и тактильной отдачей" },  
+   { _id: 4,  name: "Монитор 27\"",          price: 12000, description: "Монитор высокого разрешения для работы и игр" },  
+   { _id: 5,  name: "Наушники с микрофоном", price: 2500,  description: "Подходят для работы и онлайн-общения" },  
+   { _id: 6,  name: "Веб-камера FullHD",     price: 1800,  description: "Камера для видеозвонков и стриминга" },  
+   { _id: 7,  name: "МФУ принтер",           price: 7000,  description: "Лазерный принтер с функцией сканирования" },  
+   { _id: 8,  name: "Игровое кресло",        price: 15000, description: "Эргономичное кресло для геймеров" },  
+   { _id: 9,  name: "Жесткий диск 2TB",      price: 4500,  description: "Надежное хранилище данных" },  
+   { _id: 10, name: "SSD 1TB",               price: 8500,  description: "Быстрый твердотельный накопитель" },  
+   { _id: 11, name: "Смарт-часы",            price: 9000,  description: "Фитнес-браслет с расширенными функциями" },  
+   { _id: 12, name: "Планшет 10\"",          price: 18000, description: "Планшет с высоким разрешением экрана" },  
+   { _id: 13, name: "Смартфон",              price: 30000, description: "Флагманский смартфон последнего поколения" },  
+   { _id: 14, name: "Роутер Wi-Fi 6",        price: 3500,  description: "Высокоскоростной маршрутизатор для дома" },  
+   { _id: 15, name: "Беспроводные наушники", price: 6000,  description: "Компактные и удобные наушники" },  
+   { _id: 16, name: "Колонка Bluetooth",     price: 4000,  description: "Портативная колонка с отличным звуком" },  
+   { _id: 17, name: "Внешний аккумулятор",   price: 2500,  description: "Powerbank на 20000 мАч" },  
+   { _id: 18, name: "Флешка 128GB",          price: 1200,  description: "USB накопитель для быстрого обмена данными" },  
+   { _id: 19, name: "Видеокарта",            price: 45000, description: "Игровая видеокарта последнего поколения" },  
+   { _id: 20, name: "Материнская плата",     price: 15000, description: "Материнская плата с поддержкой новейших процессоров" },  
+ ])  
+
+```
+
+Проверяем статус шардирования данных 
+
+```JS
+
+[direct: mongos] stocks> db.products.getShardDistribution()
+... 
+MongoshInvalidInputError: [SHAPI-10001] Collection products is not sharded
+
+```
+
+Данные лежат на одной шарде - это сделано специально. Я размышлял, как лучше шардировать базу данных, и для меня наилучшим решением, исходя из второго задания, было шардировать именно остатки по складам.
+Наименований товаров может быть, например, около 10 000, и важно разложить остатки по шардам, чтобы избежать проблем с поиском. Например, если пользователь захочет посмотреть товары дороже 5 000 рублей, и эти товары будут на разных шардах, системе придётся обходить их все, что замедлит работу.
+Поэтому я решил сделать так: коллекцию products оставить как основную на одном шарде, а уже остатки по складам разложить по шардам.
+
+
+А теперь заполним коллекцию inventory - добавим туда city_id и заполним записями:
+
+```JS
+
+
+db.inventory.insertMany(
+ [{ product_id: 1, warehouse_id: 1, city_id: 1, quantity: 5 },
+  { product_id: 2, warehouse_id: 1, city_id: 1, quantity: 0 },
+  { product_id: 3, warehouse_id: 2, city_id: 1, quantity: 8 },
+  { product_id: 4, warehouse_id: 2, city_id: 1, quantity: 7 },
+  { product_id: 5, warehouse_id: 3, city_id: 2, quantity: 0 },
+  { product_id: 6, warehouse_id: 3, city_id: 2, quantity: 3 },
+  { product_id: 7, warehouse_id: 4, city_id: 2, quantity: 6 },
+  { product_id: 8, warehouse_id: 4, city_id: 2, quantity: 1 },
+  { product_id: 9, warehouse_id: 5, city_id: 3, quantity: 8 },
+  { product_id: 10, warehouse_id: 5, city_id: 3, quantity: 4 },
+  { product_id: 11, warehouse_id: 6, city_id: 3, quantity: 9 },
+  { product_id: 12, warehouse_id: 6, city_id: 3, quantity: 0 },
+  { product_id: 13, warehouse_id: 7, city_id: 4, quantity: 15 },
+  { product_id: 14, warehouse_id: 7, city_id: 4, quantity: 7 },
+  { product_id: 15, warehouse_id: 8, city_id: 4, quantity: 0 },
+  { product_id: 16, warehouse_id: 8, city_id: 4, quantity: 2 },
+  { product_id: 17, warehouse_id: 9, city_id: 5, quantity: 6 },
+  { product_id: 18, warehouse_id: 9, city_id: 5, quantity: 0 },
+  { product_id: 19, warehouse_id: 10, city_id: 5, quantity: 11 },
+  { product_id: 20, warehouse_id: 10, city_id: 5, quantity: 5 }])
+  
+  {
+  acknowledged: true,
+  insertedIds: {
+    '0': ObjectId('68f55f89461df1eaf5ce5f47'),
+    '1': ObjectId('68f55f89461df1eaf5ce5f48'),
+    '2': ObjectId('68f55f89461df1eaf5ce5f49'),
+    '3': ObjectId('68f55f89461df1eaf5ce5f4a'),
+    '4': ObjectId('68f55f89461df1eaf5ce5f4b'),
+    '5': ObjectId('68f55f89461df1eaf5ce5f4c'),
+    '6': ObjectId('68f55f89461df1eaf5ce5f4d'),
+    '7': ObjectId('68f55f89461df1eaf5ce5f4e'),
+    '8': ObjectId('68f55f89461df1eaf5ce5f4f'),
+    '9': ObjectId('68f55f89461df1eaf5ce5f50'),
+    '10': ObjectId('68f55f89461df1eaf5ce5f51'),
+    '11': ObjectId('68f55f89461df1eaf5ce5f52'),
+    '12': ObjectId('68f55f89461df1eaf5ce5f53'),
+    '13': ObjectId('68f55f89461df1eaf5ce5f54'),
+    '14': ObjectId('68f55f89461df1eaf5ce5f55'),
+    '15': ObjectId('68f55f89461df1eaf5ce5f56'),
+    '16': ObjectId('68f55f89461df1eaf5ce5f57'),
+    '17': ObjectId('68f55f89461df1eaf5ce5f58'),
+    '18': ObjectId('68f55f89461df1eaf5ce5f59'),
+    '19': ObjectId('68f55f89461df1eaf5ce5f5a')
+  }
+}
+```
+
+# Создание и заполнение шардированной коллекции документов
+
+Используем hash-based sharding, по причине - мы стремимся равномерно распределить по шардам данные о наличии товаров на складе. 
+
+```JS
+[direct: mongos] stocks> db.inventory.createIndex({ city_id: "hashed" })
+city_id_hashed
+[direct: mongos] stocks> sh.shardCollection("stocks.inventory", { city_id: "hashed" })
+{
+  collectionsharded: 'stocks.inventory',
+  ok: 1,
+  '$clusterTime': {
+    clusterTime: Timestamp({ t: 1760911430, i: 41 }),
+    signature: {
+      hash: Binary.createFromBase64('AAAAAAAAAAAAAAAAAAAAAAAAAAA=', 0),
+      keyId: Long('0')
+    }
+  },
+  operationTime: Timestamp({ t: 1760911430, i: 41 })
+}
+```
+
+Сначала я увидел что данные лежат все в одной шарде 
+
+```JS
+[direct: mongos] stocks> db.inventory.getShardDistribution()
+Shard shard2 at shard2/shard2_1:27041,shard2_2:27042,shard2_3:27043
+{
+  data: '1KiB',
+  docs: 20,
+  chunks: 1,
+  'estimated data per chunk': '1KiB',
+  'estimated docs per chunk': 20
+}
+---
+Totals
+{
+  data: '1KiB',
+  docs: 20,
+  chunks: 1,
+  'Shard shard2': [
+    '100 % data',
+    '100 % docs in cluster',
+    '83B avg obj size on shard'
+  ]
+}
+```
+
+Но я подумал, может быть данных мало для шардирования и решил через python на генерировать данных 
+
+```JS
+[direct: mongos] stocks> db.inventory.getShardDistribution()
+Shard shard2 at shard2/shard2_1:27041,shard2_2:27042,shard2_3:27043
+{
+  data: '396.09MiB',
+  docs: 5004000,
+  chunks: 1,
+  'estimated data per chunk': '396.09MiB',
+  'estimated docs per chunk': 5004000
+}
+---
+Totals
+{
+  data: '396.09MiB',
+  docs: 5004000,
+  chunks: 1,
+  'Shard shard2': [
+    '100 % data',
+    '100 % docs in cluster',
+    '83B avg obj size on shard'
+  ]
+}
+
+```
+
+Но потом через некоторое время я увидел, я правда пока эксперементировал - удалил первоначальную коллекцию и включил шардирование во время вставки данных (10 млн записей), решил подождать, так ещё интересенее
+
+```JS
+[direct: mongos] stocks> db.inventory.getShardDistribution()
+Shard shard2 at shard2/shard2_1:27041,shard2_2:27042,shard2_3:27043
+{
+  data: '325.76MiB',
+  docs: 5132876,
+  chunks: 1,
+  'estimated data per chunk': '325.76MiB',
+  'estimated docs per chunk': 5132876
+}
+---
+Shard shard1 at shard1/shard1_1:27031,shard1_2:27032,shard1_3:27033
+{
+  data: '81.43MiB',
+  docs: 1028859,
+  chunks: 1,
+  'estimated data per chunk': '81.43MiB',
+  'estimated docs per chunk': 1028859
+}
+---
+Totals
+{
+  data: '407.2MiB',
+  docs: 6161735,
+  chunks: 2,
+  'Shard shard2': [
+    '80 % data',
+    '83.3 % docs in cluster',
+    '83B avg obj size on shard'
+  ],
+  'Shard shard1': [
+    '19.99 % data',
+    '16.69 % docs in cluster',
+    '83B avg obj size on shard'
+  ]
+}
+
+```
+
+Попробуем посмотреть какая ситуация у нас с городами, я планировал, что будет распределение равномерно.
+
+```JS
+
+[direct: mongos] stocks> 
+... db.inventory.aggregate([
+...   {
+...     $group: {
+...       _id: "$city_id",        
+...       count: { $sum: 1 }      
+...     }
+...   },
+...   { 
+...     $sort: { _id: 1 }        
+...   }
+... ])
+
+[
+  { _id: 1, count: 1041063 },
+  { _id: 2, count: 1041786 },
+  { _id: 3, count: 1041097 },
+  { _id: 4, count: 1040491 },
+  { _id: 5, count: 1042434 }
+]
+
+
+```
+
+Пока наблюдаю картинку 20% на 80% примерно, я устал ждать пока вставка 10 млн документов закончится, оставим на 6282364
+
+```JS
+[direct: mongos] stocks> db.inventory.getShardDistribution()
+Shard shard1 at shard1/shard1_1:27031,shard1_2:27032,shard1_3:27033
+{
+  data: '83.32MiB',
+  docs: 1052736,
+  chunks: 1,
+  'estimated data per chunk': '83.32MiB',
+  'estimated docs per chunk': 1052736
+}
+---
+Shard shard2 at shard2/shard2_1:27041,shard2_2:27042,shard2_3:27043
+{
+  data: '333.42MiB',
+  docs: 5229628,
+  chunks: 1,
+  'estimated data per chunk': '333.42MiB',
+  'estimated docs per chunk': 5229628
+}
+---
+Totals
+{
+  data: '416.75MiB',
+  docs: 6282364,
+  chunks: 2,
+  'Shard shard1': [
+    '19.99 % data',
+    '16.75 % docs in cluster',
+    '83B avg obj size on shard'
+  ],
+  'Shard shard2': [
+    '80 % data',
+    '83.24 % docs in cluster',
+    '83B avg obj size on shard'
+  ]
+}
+```
+
+Сделал новую коллекцию inventory2 и записал туда ещё несколько десятков тысяч записей.
+Индекс и шардирование включил сразу.
+```JS
+[direct: mongos] stocks> db.inventory2.getShardDistribution()
+Shard shard1 at shard1/shard1_1:27031,shard1_2:27032,shard1_3:27033
+{
+  data: '2.52MiB',
+  docs: 31876,
+  chunks: 1,
+  'estimated data per chunk': '2.52MiB',
+  'estimated docs per chunk': 31876
+}
+---
+Shard shard2 at shard2/shard2_1:27041,shard2_2:27042,shard2_3:27043
+{
+  data: '628KiB',
+  docs: 7755,
+  chunks: 1,
+  'estimated data per chunk': '628KiB',
+  'estimated docs per chunk': 7755
+}
+---
+Totals
+{
+  data: '3.13MiB',
+  docs: 39631,
+  chunks: 2,
+  'Shard shard1': [
+    '80.43 % data',
+    '80.43 % docs in cluster',
+    '83B avg obj size on shard'
+  ],
+  'Shard shard2': [
+    '19.56 % data',
+    '19.56 % docs in cluster',
+    '83B avg obj size on shard'
+  ]
+}
+```
+
+ Возможно проблема в ключе city_id попробую сейчас - увеличить количество city_id до 50
+ 
+ 
+```JS
+
+[direct: mongos] stocks> db.inventory2.getShardDistribution()
+Shard shard1 at shard1/shard1_1:27031,shard1_2:27032,shard1_3:27033
+{
+  data: '3.16MiB',
+  docs: 39960,
+  chunks: 1,
+  'estimated data per chunk': '3.16MiB',
+  'estimated docs per chunk': 39960
+}
+---
+Shard shard2 at shard2/shard2_1:27041,shard2_2:27042,shard2_3:27043
+{
+  data: '949KiB',
+  docs: 11713,
+  chunks: 1,
+  'estimated data per chunk': '949KiB',
+  'estimated docs per chunk': 11713
+}
+---
+Totals
+{
+  data: '4.08MiB',
+  docs: 51673,
+  chunks: 2,
+  'Shard shard1': [
+    '77.33 % data',
+    '77.33 % docs in cluster',
+    '83B avg obj size on shard'
+  ],
+  'Shard shard2': [
+    '22.66 % data',
+    '22.66 % docs in cluster',
+    '83B avg obj size on shard'
+  ]
+}
+
+```
+
+Наблюдаю увеличение количества записей на 2-ой шарде. Вывод что при малом количестве city_id - скорее всего нужно не через hashed, а указывать на какой shard нужно записывать через range.
+
+Начинаем процесс заново
+
+```JS
+db.inventory.drop()
+db.inventory2.drop()
+```
+
+Распределение документов после увеличения до 50 количества городов
+
+```JS
+[direct: mongos] stocks>
+... let count = db.inventory.countDocuments({ city_id: { $in: [1, 10, 15] } });
+... print("Query 1:", count);
+... count = db.inventory.countDocuments({ city_id: { $gte: 20, $lte: 29 } });
+... print("Query 2:", count);
+... count = db.inventory.countDocuments({ city_id: 10 });
+... print("Query 3:", count);
+... count = db.inventory.countDocuments({ city_id: 1 });
+... print("Query 4:", count);
+... count = db.inventory.countDocuments({ city_id: 15 });
+... print("Query 5:", count);
+... count = db.inventory.countDocuments({ city_id: { $gte: 20, $lte: 29 } });
+... print("Query 6:", count);
+... count = db.inventory.countDocuments({ city_id: { $gte: 20, $lte: 29 } });
+... print("Query 7:", count);
+Query 1: 6070
+Query 2: 19946
+Query 3: 2087
+Query 4: 2009
+Query 5: 1974
+Query 6: 19946
+Query 7: 19946
+
+```
+
+Видно что они распределились равномерно, это идеальная ситуация
+
+Но по шардам они распределились не так однородно.
+
+```JS
+[direct: mongos] stocks> db.inventory.getShardDistribution()
+Shard shard1 at shard1/shard1_1:27031,shard1_2:27032,shard1_3:27033
+{
+  data: '4.92MiB',
+  docs: 62208,
+  chunks: 1,
+  'estimated data per chunk': '4.92MiB',
+  'estimated docs per chunk': 62208
+}Вывод: для hash-sharding важно иметь достаточно разнообразный ключ, чтобы балансировщик мог равномерно распределять чанки. При небольших данных лучше использовать range-based sharding, чтобы явно указать, какие документы на каком шарде.
+---
+Shard shard2 at shard2/shard2_1:27041,shard2_2:27042,shard2_3:27043
+{
+  data: '2.99MiB',
+  docs: 37792,
+  chunks: 1,
+  'estimated data per chunk': '2.99MiB',
+  'estimated docs per chunk': 37792
+}
+---
+Totals
+{
+  data: '7.91MiB',
+  docs: 100000,
+  chunks: 2,
+  'Shard shard1': [
+    '62.2 % data',
+    '62.2 % docs in cluster',
+    '83B avg obj size on shard'
+  ],
+  'Shard shard2': [
+    '37.79 % data',
+    '37.79 % docs in cluster',
+    '83B avg obj size on shard'
+  ]
+}
+```
+
+Вывод: для hash-sharding важно иметь большое разнообразие ключей, если ключи имеют несколько заранее известных значений, лучше использовать range-based sharding и явно указать, какие документы, на каком шарде.
+
+
+# Cравнение производительности:
+
+Сделаем не шардированную копию коллекции 
+```JS
+[direct: mongos] stocks> db.inventory.aggregate([
+...     { $match: {} }, 
+...     { $out: "inventory_copy" } 
+... ])
+
+[direct: mongos] stocks> db.inventory_copy.getShardDistribution()
+MongoshInvalidInputError: [SHAPI-10001] Collection inventory_copy is not sharded
+```
+
+Сравним производительность у обоих коллекций с разными условиями, напишем функцию на основе агрегации из [работы №2](task2.md)
+
+```JS
+function aggregateByCity(collectionName, cityFilter) {
+    const start = new Date();
+    const result = db.getCollection(collectionName).aggregate([
+        { $match: { city_id: cityFilter } },
+        { $group: { _id: "$product_id", totalQuantity: { $sum: "$quantity" } } },
+        { $lookup: { from: "products", localField: "_id", foreignField: "_id", as: "product" } },
+        { $unwind: "$product" },
+        { $project: { _id: 0, name: "$product.name", totalQuantity: 1 } },
+        { $sort: { totalQuantity: -1 } }
+    ]).toArray();
+}
+
+const testFilters = [
+    { filter: { $in: [1, 10, 15] }, label: "Query 1: city_id in [1,10,15]" },
+    { filter: { $gte: 20, $lte: 29 }, label: "Query 2: 20 <= city_id <= 29" },
+    { filter: 10, label: "Query 3: city_id = 10" },
+    { filter: 1, label: "Query 4: city_id = 1" },
+    { filter: 15, label: "Query 5: city_id = 15" },
+    { filter: { $lte: 25 }, label: "Query 6: city_id <= 25" },
+    { filter: { $gt: 25 }, label: "Query 7: city_id > 25" },
+    { filter: { $in: [2, 4, 6] }, label: "Query 8: city_id in [2,4,6]" },
+    { filter: { $in: [7, 8, 9] }, label: "Query 9: city_id in [7,8,9]" },
+    { filter: { $in: [3, 5, 10] }, label: "Query 10: city_id in [3,5,10]" },
+    { filter: { $gte: 1 }, label: "Query 11: city_id >= 1" }
+];
+
+function runTests(collectionName) {
+    print("=== Testing collection:", collectionName, "===");
+
+    testFilters.forEach(tf => {
+        let sumTime = 0;
+        for (let i = 0; i < 5; i++) { 
+            const start = new Date();
+            aggregateByCity(collectionName, tf.filter, tf.label); 
+            const end = new Date();
+            sumTime += (end - start);
+        }
+        const avgTime = sumTime / 5;
+        print(tf.label, "- average time over 5 runs:", avgTime, "ms");
+    });
+}
+
+
+
+runTests("inventory");
+runTests("inventory_copy");
+
+
+=== Testing collection: inventory ===
+Query 1: city_id in [1,10,15] - average time over 5 runs: 20.4 ms
+Query 2: 20 <= city_id <= 29 - average time over 5 runs: 36.4 ms
+Query 3: city_id = 10 - average time over 5 runs: 10.2 ms
+Query 4: city_id = 1 - average time over 5 runs: 9.8 ms
+Query 5: city_id = 15 - average time over 5 runs: 9.6 ms
+Query 6: city_id <= 25 - average time over 5 runs: 91.6 ms
+Query 7: city_id > 25 - average time over 5 runs: 63.2 ms
+Query 8: city_id in [2,4,6] - average time over 5 runs: 16 ms
+Query 9: city_id in [7,8,9] - average time over 5 runs: 16.8 ms
+Query 10: city_id in [3,5,10] - average time over 5 runs: 17.4 ms
+Query 11: city_id >= 1 - average time over 5 runs: 149 ms
+=== Testing collection: inventory_copy ===
+Query 1: city_id in [1,10,15] - average time over 5 runs: 35.2 ms
+Query 2: 20 <= city_id <= 29 - average time over 5 runs: 36.8 ms
+Query 3: city_id = 10 - average time over 5 runs: 33.4 ms
+Query 4: city_id = 1 - average time over 5 runs: 32.2 ms
+Query 5: city_id = 15 - average time over 5 runs: 31 ms
+Query 6: city_id <= 25 - average time over 5 runs: 37.8 ms
+Query 7: city_id > 25 - average time over 5 runs: 37.8 ms
+Query 8: city_id in [2,4,6] - average time over 5 runs: 34.4 ms
+Query 9: city_id in [7,8,9] - average time over 5 runs: 33.8 ms
+Query 10: city_id in [3,5,10] - average time over 5 runs: 35.6 ms
+Query 11: city_id >= 1 - average time over 5 runs: 43.6 ms
+
+```
+# Вывод
+
+Самая высокая просадка наблюдается когда у нас большое количество city_id в запросе - наиболее высокая в 11 запросе - там выборока все city_id - как видно ещё шардирование ускорило выборку данных если чисто брать по одному городу, но если данные используют сразу несколько городов или все - то мы получаем увеличение задержки в 5 раз. В целом по данной работе могу сделать вывод - шардирование должно выбираться в результате обдуманного решения с оглядкой на бизнес задачи. Например, если у нас интернет магазин, где пользователь выбирает товары и ему показывают остатки по городу, возможно шардировать данные по городу будет удобно и даже давать ускорение, но если пользователь будет искать например по геограифическим данным (например Москва +300 км) то такая огранзиация наоборот замедлит поиск или выдачу данных
