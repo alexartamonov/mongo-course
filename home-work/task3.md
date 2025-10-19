@@ -1,3 +1,10 @@
+# Задание
+1. Развернуть ВМ (Linux) с MongoDB (у вас есть ВМ в ВБ, любой другой способ, в т.ч. докер)
+2. Создать коллекцию (~20 строк) с товарами и их характеристиками
+3. Создать wildtext индекс, проверить работу и проанализировать план запроса
+4. Не забываем ВМ остановить/удалить
+   
+# Выполнение
 
 Запускаем mongodb из прошлой работы [task2.md](home-work/task2.md)
 
@@ -377,7 +384,7 @@ store> db.products.find({
 ]
 ```
 
-Попробуем разобраться почему так произошло?
+Попробуем разобраться почему так произошло?как сделать wildcard индекс c русским языком?
 
 Видно что язык индекса указан как `english`, попробуем поменять его на русский
 ```
@@ -443,7 +450,7 @@ store> db.products.find({ $text: { $search: "игровой" } })
 
 Ура! Теперь выводим три товара из нашего списка, посмотрим изменилось ли что то в плане запроса - 
 
-```
+```JS
 store> db.products.find({ $text: { $search: "игровой" } }).explain("executionStats")
 {
   explainVersion: '1',
@@ -524,7 +531,7 @@ store> db.products.find({ $text: { $search: "игровой" } }).explain("execu
         nReturned: 3,
         executionTimeMillisEstimate: 0,
         works: 4,
-        advanced: 3,
+        advanced: 3,как сделать wildcard индекс c русским языком?
         needTime: 0,
         needYield: 0,
         saveState: 0,
@@ -586,6 +593,32 @@ store> db.products.find({ $text: { $search: "игровой" } }).explain("execu
 
 ```
 
+Сравним оба вывода:
 
+```diff
+
+-    '$language': 'english',
++    '$language': 'russian',
+
+-    nReturned: 1,
++    nReturned: 3,
+
+-    totalKeysExamined: 1,
+-    totalDocsExamined: 1,
++    totalKeysExamined: 3,
++    totalDocsExamined: 3,
+
+-    terms: [ 'игровои' ],
++    terms: [ 'игров' ],
+
+```
+
+1. Старый индекс был english, но стал russian
+2. Новый индекс умеет в морфологию поэтому нашел не 1, (точное совпадение слова), а целых 3 записи
+3. Увеличлось количество проверок ключей из за использования нескольких форм слова в нашей коллекции
+
+
+
+# Вывод
 
 
