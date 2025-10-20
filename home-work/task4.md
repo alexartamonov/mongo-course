@@ -2,6 +2,133 @@
 
 Запускаем docker-compose вместе с шардированным кластером
 
+```yaml
+version: '3.9'
+
+services:
+  # ========================
+  # Config Servers
+  # ========================
+  cfg1:
+    image: mongo:8.0
+    command: ["mongod", "--configsvr", "--replSet", "cfgRepl", "--port", "27019", "--bind_ip_all", "--dbpath", "/data/db"]
+    volumes:
+      - cfg1_data:/data/db
+    networks:
+      - mongo-cluster
+
+  cfg2:
+    image: mongo:8.0
+    command: ["mongod", "--configsvr", "--replSet", "cfgRepl", "--port", "27020", "--bind_ip_all", "--dbpath", "/data/db"]
+    volumes:
+      - cfg2_data:/data/db
+    networks:
+      - mongo-cluster
+
+  cfg3:
+    image: mongo:8.0
+    command: ["mongod", "--configsvr", "--replSet", "cfgRepl", "--port", "27021", "--bind_ip_all", "--dbpath", "/data/db"]
+    volumes:
+      - cfg3_data:/data/db
+    networks:
+      - mongo-cluster
+
+  # ========================
+  # Shard 1
+  # ========================
+  shard1_1:
+    image: mongo:8.0
+    command: ["mongod", "--shardsvr", "--replSet", "shard1", "--port", "27031", "--bind_ip_all", "--dbpath", "/data/db"]
+    volumes:
+      - shard1_1_data:/data/db
+    networks:
+      - mongo-cluster
+
+  shard1_2:
+    image: mongo:8.0
+    command: ["mongod", "--shardsvr", "--replSet", "shard1", "--port", "27032", "--bind_ip_all", "--dbpath", "/data/db"]
+    volumes:
+      - shard1_2_data:/data/db
+    networks:
+      - mongo-cluster
+
+  shard1_3:
+    image: mongo:8.0
+    command: ["mongod", "--shardsvr", "--replSet", "shard1", "--port", "27033", "--bind_ip_all", "--dbpath", "/data/db"]
+    volumes:
+      - shard1_3_data:/data/db
+    networks:
+      - mongo-cluster
+
+  # ========================
+  # Shard 2
+  # ========================
+  shard2_1:
+    image: mongo:8.0
+    command: ["mongod", "--shardsvr", "--replSet", "shard2", "--port", "27041", "--bind_ip_all", "--dbpath", "/data/db"]
+    volumes:
+      - shard2_1_data:/data/db
+    networks:
+      - mongo-cluster
+
+  shard2_2:
+    image: mongo:8.0
+    command: ["mongod", "--shardsvr", "--replSet", "shard2", "--port", "27042", "--bind_ip_all", "--dbpath", "/data/db"]
+    volumes:
+      - shard2_2_data:/data/db
+    networks:
+      - mongo-cluster
+
+  shard2_3:
+    image: mongo:8.0
+    command: ["mongod", "--shardsvr", "--replSet", "shard2", "--port", "27043", "--bind_ip_all", "--dbpath", "/data/db"]
+    volumes:
+      - shard2_3_data:/data/db
+    networks:
+      - mongo-cluster
+
+  # ========================
+  # Mongos (query router)
+  # ========================
+  mongos:
+    image: mongo:8.0
+    command: >
+      mongos
+      --configdb cfgRepl/cfg1:27019,cfg2:27020,cfg3:27021
+      --bind_ip_all
+      --port 27017
+    depends_on:
+      - cfg1
+      - cfg2
+      - cfg3
+      - shard1_1
+      - shard1_2
+      - shard1_3
+      - shard2_1
+      - shard2_2
+      - shard2_3
+    ports:
+      - "27017:27017"
+    networks:
+      - mongo-cluster
+
+volumes:
+  cfg1_data:
+  cfg2_data:
+  cfg3_data:
+  shard1_1_data:
+  shard1_2_data:
+  shard1_3_data:
+  shard2_1_data:
+  shard2_2_data:
+  shard2_3_data:
+
+networks:
+  mongo-cluster:
+    driver: bridge
+
+```
+
 ```bash
 user@fedora:~/WorkNew/mongodb$ docker-compose up -d
 WARN[0000] /home/user/WorkNew/mongodb/docker-compose.yaml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
